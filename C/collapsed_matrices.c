@@ -1,8 +1,9 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
 #include <math.h>
+#include "vector2D.h"
+#include "body.h"
 
 typedef unsigned int uint;
 
@@ -35,117 +36,6 @@ inline float rand_0_to_1(uint32_t* seed){
 inline float rand_float(uint32_t* seed, float from, float to)
 {
     return rand_0_to_1(seed) * (to-from) + from;
-}
-
-//Vector 2D ---
-typedef struct Vector2D
-{
-    float x;
-    float y;
-} Vector2D;
-
-void vector2D_initialize(Vector2D* vector2D) {
-    vector2D->x=0;
-    vector2D->y=0;
-}
-
-void vector2D_set(Vector2D* vector2D, const float x, const float y) {
-    vector2D->x=x;
-    vector2D->y=y;
-}
-
-void vector2D_random(Vector2D* vector2D, const float from, const float to) {
-    vector2D->x = ((float)rand()/(float)RAND_MAX)*(to-from)+from;
-    vector2D->y = ((float)rand()/(float)RAND_MAX)*(to-from)+from;
-}
-
-Vector2D vector2D_new(const float x, const float y) {
-    Vector2D output;
-    vector2D_set(&output, x, y);
-    return output;
-}
-
-Vector2D vector2D_add(Vector2D a, Vector2D b) {
-    Vector2D output;
-    output.x = a.x + b.x;
-    output.y = a.y + b.y;
-    return output;
-}
-
-Vector2D vector2D_add_equals(Vector2D* a, const Vector2D* b) {
-    a->x = a->x + b->x;
-    a->y = a->y + b->y;
-}
-
-Vector2D vector2D_subtract(Vector2D a, Vector2D b) {
-    Vector2D output;
-    output.x = a.x - b.x;
-    output.y = a.y - b.y;
-    return output;
-}
-
-Vector2D vector2D_subtract_equals(Vector2D* a, const Vector2D* b) {
-    a->x = a->x - b->x;
-    a->y = a->y - b->y;
-}
-
-float vector2D_sqr_length(Vector2D vector) {
-    float output;
-    output = vector.x*vector.x+vector.y*vector.y;
-    return output;
-}
-
-float vector2D_length(Vector2D vector) {
-    return sqrtf(vector2D_sqr_length(vector));
-}
-
-inline float vector2D_angle(Vector2D vector) {
-    return atan2f(vector.y, vector.x);
-}
-
-Vector2D vector2D_from_magnitude_and_angle(float magnitude, float angle) {
-    Vector2D output;
-    output.x = magnitude*cosf(angle);
-    output.y = magnitude*sinf(angle);
-    return output;
-}
-
-typedef struct Body {
-    float mass;
-    Vector2D position;
-    Vector2D speed;
-    Vector2D accel; 
-} Body;
-
-void body_initialize(Body* body) {
-    body->mass=0.001;
-    vector2D_initialize(&body->position);
-    vector2D_initialize(&body->speed);
-    vector2D_initialize(&body->accel);
-}
-
-//Random mass and position, speed and accel set to 0
-void body_random(Body* body) {
-    const float rand_mass = ((float)rand()/(float)RAND_MAX)*(1.0-0.001)+0.001; 
-    Vector2D rand_pos;
-    vector2D_random(&rand_pos, -1.0, 1.0); 
-    body->mass = rand_mass;
-    body->position = rand_pos;
-    vector2D_initialize(&body->speed);
-    vector2D_initialize(&body->accel);
-}
-
-Body* body_new() {
-    Body* output = malloc(sizeof(Body));
-    body_initialize(output);
-    return output;
-}
-
-void body_print(Body* body) {
-    printf("Mass:\t\t%06.3f\n", body->mass);
-    printf("Position:\tx: %06.3f, y: %06.3f\n", body->position.x, body->position.y);
-    printf("Speed:\t\tx: %06.3f, y: %06.3f\n", body->speed.x, body->speed.y);
-    printf("Acceleration:\tx: %06.3f, y: %06.3f\n", body->accel.x, body->accel.y);
 }
 
 typedef struct CollapsedMatrix 
@@ -248,23 +138,19 @@ static Vector2D grav_force_2(const Body* body_A, const Body* body_B) {
 
 void collapsed_matrix_apply_function(CollapsedMatrix* collapsed_matrix, const Body* items) {
     uint i;
-    #pragma omp parallel private (i) 
-    {
-        #pragma omp for
-        for (i=0; i<collapsed_matrix->length*collapsed_matrix->dimension; i+=collapsed_matrix->dimension){
-            collapsed_matrix->results[i/collapsed_matrix->dimension] = grav_force_2(items+collapsed_matrix->indices[i], items+collapsed_matrix->indices[i+1]);
-        }
+    
+    #pragma omp parallel for
+    for (i=0; i<collapsed_matrix->length*collapsed_matrix->dimension; i+=collapsed_matrix->dimension){
+        collapsed_matrix->results[i/collapsed_matrix->dimension] = grav_force_2(items+collapsed_matrix->indices[i], items+collapsed_matrix->indices[i+1]);
     }
 }
 
 void collapsed_matrix_calculate_sum(CollapsedMatrix* collapsed_matrix) {
     uint i;
-    # pragma omp parallel private ( i )
-    {
-        # pragma omp for
-        for (i = 0; i < (collapsed_matrix->length*collapsed_matrix->dimension); i++){
-            vector2D_add_equals(&collapsed_matrix->sum[collapsed_matrix->indices[i]], &collapsed_matrix->results[i/collapsed_matrix->dimension]);
-        }
+    
+    #pragma omp parallel for
+    for (i = 0; i < (collapsed_matrix->length*collapsed_matrix->dimension); i++){
+        vector2D_add_equals(&collapsed_matrix->sum[collapsed_matrix->indices[i]], &collapsed_matrix->results[i/collapsed_matrix->dimension]);
     }
 }
 
@@ -301,8 +187,8 @@ int main() {
     // end_fun = clock();
 
     printf("\nTime spent:\n");
-    printf("Apply function: %f\n", ((double) (end_fun-start_fun)) / CLOCKS_PER_SEC * 1000);
-    printf("Apply sumation: %f\n", ((double) (end_sum-start_sum)) / CLOCKS_PER_SEC * 1000);
+    printf("Apply function: %3.3f ms\n", ((double) (end_fun-start_fun)) / CLOCKS_PER_SEC * 1000);
+    printf("Apply sumation: %3.3f ms\n", ((double) (end_sum-start_sum)) / CLOCKS_PER_SEC * 1000);
     
     return 0;
 }
